@@ -32,10 +32,8 @@ def _set_models(netlist: str, models: dict) -> str:
 def model_names(lib_text: str):
     return re.findall(r"^\.model\s+(\S+)\s+(\w+)", lib_text, re.I | re.M)
 
-def simulate(circuit_dir, params: dict, timeout=30, lib_text=None, models=None) -> dict:
-    """lib_text: optional model library text that replaces the netlist's .include line.
-    models: optional device -> model-name mapping."""
-    d = Path(circuit_dir).resolve()
+def _deck(d, params, lib_text, models, control_text):
+    """Return (deck text, temp lib path or None)."""
     net = _set_params((d / "netlist.cir").read_text(), params)
     libpath = None
     if lib_text is not None:
@@ -44,15 +42,45 @@ def simulate(circuit_dir, params: dict, timeout=30, lib_text=None, models=None) 
         net = re.sub(r"^\.include\s+.*\.lib\s*$", f".include {libpath}", net, flags=re.I | re.M)
     if models:
         net = _set_models(net, models)
-    net = net.replace("\n.end", "\n" + (d / "measure.control").read_text() + "\n.end", 1) \
-          if net.rstrip().lower().endswith(".end") else net + (d / "measure.control").read_text() + "\n.end\n"
+    body = net.rstrip()
+    if body.lower().endswith(".end"):
+        body = body[:-4]
+    return body + "\n" + control_text + "\n.end\n", libpath
+
+def _run(d, deck, timeout):
     with tempfile.NamedTemporaryFile("w", suffix=".sp", dir=d, delete=False) as f:
-        f.write(net); path = f.name
+        f.write(deck); path = f.name
     try:
-        out = subprocess.run([NGSPICE, "-b", path], capture_output=True, text=True,
-                             timeout=timeout, cwd=d).stdout
+        return subprocess.run([NGSPICE, "-b", path], capture_output=True, text=True,
+                              timeout=timeout, cwd=d).stdout
     finally:
         os.unlink(path)
+
+def curves(circuit_dir, params: dict, timeout=60, lib_text=None, models=None) -> dict:
+    """Frequency response and output waveform for plotting (uses curves.control)."""
+    import numpy as np
+    d = Path(circuit_dir).resolve()
+    tmp = tempfile.mkdtemp()
+    ctrl = (d / "curves.control").read_text().replace("{OUT}", os.path.join(tmp, "c"))
+    deck, libpath = _deck(d, params, lib_text, models, ctrl)
+    try:
+        _run(d, deck, timeout)
+        ac = np.loadtxt(os.path.join(tmp, "c_ac.dat"))
+        tr = np.loadtxt(os.path.join(tmp, "c_tran.dat"))
+    finally:
+        if libpath: os.unlink(libpath)
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {"freq": ac[:, 0], "gain_db": ac[:, 1], "phase": ac[:, 3],
+            "t": tr[:, 0], "vin_uv": tr[:, 1], "vout_mv": tr[:, 3]}
+
+def simulate(circuit_dir, params: dict, timeout=30, lib_text=None, models=None) -> dict:
+    """lib_text: optional model library text that replaces the netlist's .include line.
+    models: optional device -> model-name mapping."""
+    d = Path(circuit_dir).resolve()
+    deck, libpath = _deck(d, params, lib_text, models, (d / "measure.control").read_text())
+    try:
+        out = _run(d, deck, timeout)
+    finally:
         if libpath:
             os.unlink(libpath)
     meas = {m.group(1): float(m.group(2))

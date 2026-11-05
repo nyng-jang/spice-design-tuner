@@ -29,21 +29,29 @@ class _S:
     def dot(self, x, y):
         self.out.append(f"<circle cx='{x}' cy='{y}' r='3' fill='#222'/>")
 
+    def _hit(self, name, x0, y0, w, h):
+        self.out.append(f"<g class='el' data-name='{name}' data-value='{self.v[name]}' data-role='{self.roles.get(name, '')}'>"
+                        f"<rect class='hit' x='{x0}' y='{y0}' width='{w}' height='{h}' rx='6'/>")
+
     def res_v(self, x, y1, y2, name, label_side=1):
         c = self.color(name); m = (y1 + y2) / 2; h = 18
+        self._hit(name, x - 18 if label_side > 0 else x - 62, m - 26, 80, 52)
         self.line(x, y1, x, m - h); self.line(x, m + h, x, y2)
         pts = [(x, m - h)] + [(x + (7 if i % 2 else -7), m - h + 3 + i * 6) for i in range(6)] + [(x, m + h)]
         self.out.append("<polyline fill='none' stroke='%s' stroke-width='2.4' points='%s'/>" % (c, " ".join(f"{a},{b}" for a, b in pts)))
         tx = x + 12 * label_side; anc = "start" if label_side > 0 else "end"
-        self.text(tx, m - 2, name, c, 12, anc, bold=True)
-        self.text(tx, m + 13, fmt(self.v[name]) + "Ω", c, 12, anc)
+        self.text(tx, m - 3, name, c, 14, anc, bold=True)
+        self.text(tx, m + 14, fmt(self.v[name]) + "Ω", c, 13, anc)
+        self.out.append("</g>")
 
     def res_h(self, x1, x2, y, name):
         c = self.color(name); m = (x1 + x2) / 2; w = 18
+        self._hit(name, m - 45, y - 30, 90, 42)
         self.line(x1, y, m - w, y); self.line(m + w, y, x2, y)
         pts = [(m - w, y)] + [(m - w + 3 + i * 6, y + (7 if i % 2 else -7)) for i in range(6)] + [(m + w, y)]
         self.out.append("<polyline fill='none' stroke='%s' stroke-width='2.4' points='%s'/>" % (c, " ".join(f"{a},{b}" for a, b in pts)))
-        self.text(m, y - 14, f"{name} {fmt(self.v[name])}Ω", c, 12, "middle", bold=True)
+        self.text(m, y - 14, f"{name} {fmt(self.v[name])}Ω", c, 14, "middle", bold=True)
+        self.out.append("</g>")
 
     def cap_v(self, x, y1, y2, label):
         m = (y1 + y2) / 2
@@ -77,7 +85,12 @@ class _S:
         self.out.append(f"<polygon points='{x+7},{y+12} {x+14},{y+8} {x+14},{y+16}' fill='#222'/>")
         self.text(x + 28, y - 4, name, "#222", 12, bold=True); self.text(x + 28, y + 11, model, "#888", 10)
 
-def schematic_svg(values, roles=None, active=None, models=None):
+def _tag(s, x, y, txt):
+    s.out.append(f"<g class='tag'><rect x='{x}' y='{y-11}' width='{len(txt)*6.6+10}' height='16' rx='8' fill='#eef4ff' stroke='#c9dafc'/>"
+                 f"<text x='{x+5}' y='{y+1}' fill='#3056b8' font-size='11' {FONT}>{txt}</text></g>")
+
+def schematic_svg(values, roles=None, active=None, models=None, nodes=None):
+    """nodes: optional dict of DC node voltages {"d1":..,"c2":..,"e2":..,"e3":..} to tag on the drawing."""
     s = _S(values, roles or {}, set(active or []))
     models = models or {}
     TOP, BOT = 50, 420
@@ -116,9 +129,15 @@ def schematic_svg(values, roles=None, active=None, models=None):
     s.line(765, 290, 815, 290); s.cap_h(815, 855, 290, "C6"); s.line(855, 290, 870, 290); s.dot(870, 290)
     s.res_v(870, 290, BOT, "RL"); s.gnd(870, BOT)
     s.text(880, 280, "v_out", "#555", 11)
+    if nodes:
+        for key, x, y in (("d1", 275, 185), ("c2", 515, 165), ("e2", 515, 285), ("e3", 775, 305)):
+            if key in nodes:
+                _tag(s, x, y, f"{key} {nodes[key]:.2f}V")
     legend = [("#e67e22", "조정 대상"), ("#1f77b4", "고정 (직접 입력)"), ("#d62728", "지금 바꾸는 중")]
     for i, (c, t) in enumerate(legend):
         s.out.append(f"<rect x='{20+i*150}' y='{BOT+40}' width='12' height='12' fill='{c}'/>")
         s.text(38 + i * 150, BOT + 51, t, "#444", 12)
     body = "\n".join(s.out)
-    return f"<svg viewBox='0 0 920 {BOT+60}' xmlns='http://www.w3.org/2000/svg' style='width:100%;background:#fff'>{body}</svg>"
+    style = ("<style>.el .hit{fill:transparent;cursor:pointer}.el:hover .hit{fill:rgba(37,99,235,.08);stroke:#2563eb;stroke-dasharray:3,3}"
+             ".el{cursor:pointer}</style>")
+    return f"<svg viewBox='0 0 920 {BOT+60}' xmlns='http://www.w3.org/2000/svg' style='width:100%;background:#fff'>{style}{body}</svg>"

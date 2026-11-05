@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;padding:0;font-family:"Pretendard","Noto Sans KR",system-ui,sans-serif;background:transparent}
+  #wrap{position:relative;border:1px solid #e5e7eb;border-radius:14px;background:#fff;padding:8px 8px 4px}
+  #hint{font-size:12px;color:#6b7280;margin:2px 6px 6px}
+  #tip{position:absolute;pointer-events:none;background:#111827;color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;display:none;white-space:nowrap}
+  #pop{position:absolute;display:none;background:#fff;border:1px solid #d1d5db;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.15);padding:12px;width:220px;z-index:5}
+  #pop h4{margin:0 0 8px;font-size:14px}
+  #pop input{width:100%;box-sizing:border-box;font-size:15px;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px}
+  #pop .sub{font-size:11px;color:#6b7280;margin:4px 0 8px}
+  .roles{display:flex;gap:6px;margin-bottom:10px}
+  .roles button{flex:1;font-size:12px;padding:5px 0;border:1px solid #cbd5e1;background:#fff;border-radius:7px;cursor:pointer}
+  .roles button.on[data-r="tune"]{background:#fff4e6;border-color:#e67e22;color:#b45309}
+  .roles button.on[data-r="fixed"]{background:#e8f1ff;border-color:#1f77b4;color:#1d4ed8}
+  .roles button.on[data-r=""]{background:#f3f4f6;border-color:#9ca3af}
+  .acts{display:flex;gap:6px}
+  .acts button{flex:1;padding:7px 0;border-radius:8px;border:none;cursor:pointer;font-size:13px}
+  #ok{background:#2563eb;color:#fff} #cancel{background:#f3f4f6}
+  #err{color:#dc2626;font-size:11px;min-height:14px}
+</style></head>
+<body>
+<div id="wrap">
+  <div id="hint">저항을 클릭하면 값과 역할을 바로 바꿀 수 있어요 · 예: 22.9k, 1.5M, 560</div>
+  <div id="svg"></div>
+  <div id="tip"></div>
+  <div id="pop">
+    <h4 id="pname"></h4>
+    <input id="pval" autocomplete="off">
+    <div class="sub">단위: Ω (k, M 사용 가능)</div>
+    <div class="roles">
+      <button data-r="">일반</button><button data-r="fixed">고정</button><button data-r="tune">조정</button>
+    </div>
+    <div id="err"></div>
+    <div class="acts"><button id="cancel">취소</button><button id="ok">적용</button></div>
+  </div>
+</div>
+<script>
+const send = (type, extra) => window.parent.postMessage(Object.assign({isStreamlitMessage: true, type}, extra), "*");
+const setHeight = () => send("streamlit:setFrameHeight", {height: document.getElementById("wrap").offsetHeight + 4});
+let cur = null, role = "";
+const fmt = v => v >= 1e6 ? +(v/1e6).toPrecision(4)+"M" : v >= 1e3 ? +(v/1e3).toPrecision(4)+"k" : +(+v).toPrecision(4)+"";
+function parse(s){
+  const m = String(s).trim().replace(/[Ωohm\s]/gi,"").match(/^([0-9]*\.?[0-9]+(?:e[-+]?\d+)?)(meg|[kKmMuU]?)$/i);
+  if(!m) return NaN;
+  const mult = {"":1,k:1e3,K:1e3,M:1e6,meg:1e6,MEG:1e6,m:1e-3,u:1e-6,U:1e-6}[m[2]] ?? (m[2].toLowerCase()==="meg"?1e6:NaN);
+  return parseFloat(m[1]) * mult;
+}
+function openPop(g, ev){
+  cur = g.dataset.name; role = g.dataset.role || "";
+  document.getElementById("pname").textContent = cur;
+  const inp = document.getElementById("pval"); inp.value = fmt(parseFloat(g.dataset.value));
+  document.getElementById("err").textContent = "";
+  document.querySelectorAll(".roles button").forEach(b => b.classList.toggle("on", b.dataset.r === role));
+  const pop = document.getElementById("pop"), wrap = document.getElementById("wrap").getBoundingClientRect();
+  pop.style.display = "block";
+  let x = ev.clientX - wrap.left + 12, y = ev.clientY - wrap.top + 12;
+  x = Math.min(x, wrap.width - pop.offsetWidth - 8); y = Math.min(y, wrap.height - pop.offsetHeight - 8);
+  pop.style.left = x + "px"; pop.style.top = Math.max(4, y) + "px";
+  inp.focus(); inp.select();
+}
+function apply(){
+  const v = parse(document.getElementById("pval").value);
+  if(!(v > 0)){ document.getElementById("err").textContent = "숫자를 확인해주세요 (예: 4.7k)"; return; }
+  send("streamlit:setComponentValue", {value: {name: cur, value: v, role, nonce: Date.now()}, dataType: "json"});
+  document.getElementById("pop").style.display = "none";
+}
+document.querySelectorAll(".roles button").forEach(b => b.onclick = () => {
+  role = b.dataset.r; document.querySelectorAll(".roles button").forEach(x => x.classList.toggle("on", x === b)); });
+document.getElementById("ok").onclick = apply;
+document.getElementById("cancel").onclick = () => document.getElementById("pop").style.display = "none";
+document.getElementById("pval").addEventListener("keydown", e => { if(e.key === "Enter") apply(); if(e.key === "Escape") document.getElementById("pop").style.display = "none"; });
+
+window.addEventListener("message", e => {
+  if(!e.data || e.data.type !== "streamlit:render") return;
+  const box = document.getElementById("svg");
+  box.innerHTML = e.data.args.svg;
+  const tip = document.getElementById("tip");
+  box.querySelectorAll(".el").forEach(g => {
+    g.addEventListener("click", ev => openPop(g, ev));
+    g.addEventListener("mousemove", ev => {
+      const w = document.getElementById("wrap").getBoundingClientRect();
+      const r = {tune: " · 조정 대상", fixed: " · 고정"}[g.dataset.role] || "";
+      tip.textContent = `${g.dataset.name} = ${fmt(parseFloat(g.dataset.value))}Ω${r}  (클릭해서 수정)`;
+      tip.style.display = "block"; tip.style.left = (ev.clientX - w.left + 14) + "px"; tip.style.top = (ev.clientY - w.top - 30) + "px";
+    });
+    g.addEventListener("mouseleave", () => tip.style.display = "none");
+  });
+  setHeight();
+});
+window.addEventListener("resize", setHeight);
+send("streamlit:componentReady", {apiVersion: 1});
+</script>
+</body></html>

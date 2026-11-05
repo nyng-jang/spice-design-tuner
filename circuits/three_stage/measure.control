@@ -7,6 +7,14 @@ let vds1 = v(d1)-v(s1)
 echo "MEAS vce2 $&vce2"
 echo "MEAS vce3 $&vce3"
 echo "MEAS vds1 $&vds1"
+let nd1 = v(d1)
+let nc2 = v(c2)
+let ne2 = v(e2)
+let ne3 = v(e3)
+echo "MEAS v_d1 $&nd1"
+echo "MEAS v_c2 $&nc2"
+echo "MEAS v_e2 $&ne2"
+echo "MEAS v_e3 $&ne3"
 let ic2 = @q2[ic]
 let ic3 = @q3[ic]
 let id1 = @m1[id]

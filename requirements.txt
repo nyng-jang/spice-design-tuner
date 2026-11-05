@@ -3,5 +3,6 @@ scipy
 pyyaml
 pandas
 matplotlib
+plotly
 streamlit
 anthropic

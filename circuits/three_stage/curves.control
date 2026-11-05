@@ -1,0 +1,13 @@
+* Curves for plotting. {OUT} is replaced with an output file prefix.
+.control
+ac dec 20 10 10meg
+let gdb = db(mag(v(out))/mag(v(vs)))
+let ph = 180/pi*ph(v(out)/v(vs))
+wrdata {OUT}_ac.dat gdb ph
+alter vi acmag=0
+alter @vi[sin] = [ 0 0.1m 1k ]
+tran 5u 10m 5m
+let vin_uv = v(vs)*1e6
+let vout_mv = (v(out))*1e3
+wrdata {OUT}_tran.dat vin_uv vout_mv
+.endc
