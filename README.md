@@ -21,11 +21,11 @@ E96 표준값과 ±1% 공차에서도 사양이 유지되는지 확인한다.
 - `models/generic.lib` 기본 BJT 모델 (과제 사양: β=100, Early 효과 없음)
 - 과목 PSpice 라이브러리는 공개하지 않음. 앱에서 업로드하거나 로컬에 `models/course_project.lib`로 두면 기본값으로 쓰임
   (STEP1~3 메모의 수치는 과목 라이브러리 기준)
-- `tuner/sim.py` ngspice 1회 실행 + 결과 파싱
+- `tuner/spice_sim.py` ngspice 1회 실행 + 결과 파싱
 - `tuner/optimize.py` scipy least_squares 튜너, 모든 시뮬레이션을 `runs/*/history.csv`에 기록
 
 ## 실행
-    python3 tuner/sim.py circuits/three_stage            # 기준선 측정
+    python3 tuner/spice_sim.py circuits/three_stage            # 기준선 측정
     python3 tuner/optimize.py circuits/three_stage --init RE2=2000,RE3=200 --out runs/test
 
 ## 3단계: LLM 설계 리뷰어 (ANTHROPIC_API_KEY 필요)

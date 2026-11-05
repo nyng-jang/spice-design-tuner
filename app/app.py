@@ -12,7 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
 sys.path.insert(0, str(ROOT / "tuner")); sys.path.insert(0, str(APP))
-from sim import simulate, curves, model_names
+from spice_sim import simulate, curves, model_names
 from optimize import Tuner, check
 from schematic import schematic_svg, fmt
 from capdesign import design as cap_design, tune_with_caps, low_cutoff

@@ -6,7 +6,7 @@ import argparse, csv, json, math, time
 from pathlib import Path
 import numpy as np, yaml
 from scipy.optimize import least_squares
-from sim import simulate
+from spice_sim import simulate
 
 def load(circuit):
     c = Path(circuit)

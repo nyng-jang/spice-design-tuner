@@ -10,7 +10,7 @@ import re, sys
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
-from sim import run_control, curves
+from spice_sim import run_control, curves
 
 E6 = [1.0, 1.5, 2.2, 3.3, 4.7, 6.8]
 
