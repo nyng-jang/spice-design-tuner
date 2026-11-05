@@ -57,13 +57,13 @@ class _S:
         m = (y1 + y2) / 2
         self.line(x, y1, x, m - 4); self.line(x, m + 4, x, y2)
         self.line(x - 10, m - 4, x + 10, m - 4); self.line(x - 10, m + 4, x + 10, m + 4)
-        self.text(x + 13, m + 4, label, "#888", 10)
+        self.text(x + 13, m + 4, label, "#777", 11)
 
     def cap_h(self, x1, x2, y, label):
         m = (x1 + x2) / 2
         self.line(x1, y, m - 4, y); self.line(m + 4, y, x2, y)
         self.line(m - 4, y - 10, m - 4, y + 10); self.line(m + 4, y - 10, m + 4, y + 10)
-        self.text(m, y + 24, label, "#888", 10, "middle")
+        self.text(m, y + 24, label, "#777", 11, "middle")
 
     def gnd(self, x, y):
         self.line(x - 9, y, x + 9, y); self.line(x - 6, y + 4, x + 6, y + 4); self.line(x - 3, y + 8, x + 3, y + 8)
@@ -89,6 +89,15 @@ def _tag(s, x, y, txt):
     s.out.append(f"<g class='tag'><rect x='{x}' y='{y-11}' width='{len(txt)*6.6+10}' height='16' rx='8' fill='#eef4ff' stroke='#c9dafc'/>"
                  f"<text x='{x+5}' y='{y+1}' fill='#3056b8' font-size='11' {FONT}>{txt}</text></g>")
 
+def _capfmt(c):
+    for div, suf in ((1e-3, "mF"), (1e-6, "µF"), (1e-9, "nF"), (1e-12, "pF")):
+        if c >= div * 0.999:
+            return f"{c/div:.3g}{suf}"
+    return f"{c:.3g}F"
+
+def _cl(values, c):
+    return f"{c} {_capfmt(values[c])}" if c in values else c
+
 def schematic_svg(values, roles=None, active=None, models=None, nodes=None):
     """nodes: optional dict of DC node voltages {"d1":..,"c2":..,"e2":..,"e3":..} to tag on the drawing."""
     s = _S(values, roles or {}, set(active or []))
@@ -102,31 +111,31 @@ def schematic_svg(values, roles=None, active=None, models=None, nodes=None):
     s.out.append("<circle cx='50' cy='300' r='18' fill='none' stroke='#222' stroke-width='2'/>")
     s.text(50, 305, "~", "#222", 16, "middle"); s.text(50, 340, "v_s", "#555", 11, "middle")
     s.line(50, 282, 50, 230); s.line(50, 318, 50, BOT); s.gnd(50, BOT)
-    s.res_h(50, 125, 230, "RSIG"); s.cap_h(125, 175, 230, "C1")
+    s.res_h(50, 125, 230, "RSIG"); s.cap_h(125, 175, 230, _cl(values, "C1"))
     # stage 1
     s.line(175, 230, 240, 230); s.dot(195, 230)
     s.res_v(195, TOP, 230, "RG1", -1); s.res_v(195, 230, BOT, "RG2", -1); s.gnd(195, BOT)
     s.nmos(240, 230, "M1", models.get("M1", ""))
     s.res_v(260, TOP, 200, "RD1"); s.dot(260, 170)
     s.res_v(260, 260, BOT, "RS1"); s.gnd(260, BOT); s.dot(260, 300)
-    s.line(260, 300, 330, 300); s.cap_v(330, 300, BOT, "C2"); s.line(260, BOT, 330, BOT)
+    s.line(260, 300, 330, 300); s.cap_v(330, 300, BOT, _cl(values, "C2")); s.line(260, BOT, 330, BOT)
     # stage 2
-    s.line(260, 170, 345, 170); s.cap_h(345, 385, 170, "C3"); s.line(385, 170, 440, 170)
+    s.line(260, 170, 345, 170); s.cap_h(345, 385, 170, _cl(values, "C3")); s.line(385, 170, 440, 170)
     s.line(440, 170, 440, 230); s.dot(440, 230)
     s.res_v(440, TOP, 170, "R1", -1); s.dot(440, 170); s.res_v(440, 230, BOT, "R2", -1); s.gnd(440, BOT)
     s.line(440, 230, 480, 230); s.npn(480, 230, "Q2", models.get("Q2", ""))
     s.res_v(505, TOP, 200, "RC2"); s.dot(505, 150)
     s.res_v(505, 260, BOT, "RE2"); s.gnd(505, BOT); s.dot(505, 300)
-    s.line(505, 300, 590, 300); s.cap_v(590, 300, BOT, "C4"); s.line(505, BOT, 590, BOT)
+    s.line(505, 300, 590, 300); s.cap_v(590, 300, BOT, _cl(values, "C4")); s.line(505, BOT, 590, BOT)
     # stage 3
-    s.line(505, 150, 600, 150); s.cap_h(600, 640, 150, "C5"); s.line(640, 150, 700, 150)
+    s.line(505, 150, 600, 150); s.cap_h(600, 640, 150, _cl(values, "C5")); s.line(640, 150, 700, 150)
     s.line(700, 150, 700, 230); s.dot(700, 230)
     s.res_v(700, TOP, 150, "R3", -1); s.dot(700, 150); s.res_v(700, 230, BOT, "R4", -1); s.gnd(700, BOT)
     s.line(700, 230, 740, 230); s.npn(740, 230, "Q3", models.get("Q3", ""))
     s.line(765, TOP, 765, 200)
     s.line(765, 260, 765, 290); s.dot(765, 290)
     s.res_v(765, 290, BOT, "RE3", -1); s.gnd(765, BOT)
-    s.line(765, 290, 815, 290); s.cap_h(815, 855, 290, "C6"); s.line(855, 290, 870, 290); s.dot(870, 290)
+    s.line(765, 290, 815, 290); s.cap_h(815, 855, 290, _cl(values, "C6")); s.line(855, 290, 870, 290); s.dot(870, 290)
     s.res_v(870, 290, BOT, "RL"); s.gnd(870, BOT)
     s.text(880, 280, "v_out", "#555", 11)
     if nodes:

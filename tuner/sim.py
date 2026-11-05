@@ -32,7 +32,7 @@ def _set_models(netlist: str, models: dict) -> str:
 def model_names(lib_text: str):
     return re.findall(r"^\.model\s+(\S+)\s+(\w+)", lib_text, re.I | re.M)
 
-def _deck(d, params, lib_text, models, control_text):
+def _deck(d, params, lib_text, models, control_text, extra=""):
     """Return (deck text, temp lib path or None)."""
     net = _set_params((d / "netlist.cir").read_text(), params)
     libpath = None
@@ -45,7 +45,7 @@ def _deck(d, params, lib_text, models, control_text):
     body = net.rstrip()
     if body.lower().endswith(".end"):
         body = body[:-4]
-    return body + "\n" + control_text + "\n.end\n", libpath
+    return body + "\n" + extra + "\n" + control_text + "\n.end\n", libpath
 
 def _run(d, deck, timeout):
     with tempfile.NamedTemporaryFile("w", suffix=".sp", dir=d, delete=False) as f:
@@ -55,6 +55,16 @@ def _run(d, deck, timeout):
                               timeout=timeout, cwd=d).stdout
     finally:
         os.unlink(path)
+
+def run_control(circuit_dir, params: dict, control_text: str, extra="", timeout=30, lib_text=None, models=None) -> dict:
+    """Run an arbitrary .control block (plus extra netlist lines); returns MEAS name->value."""
+    d = Path(circuit_dir).resolve()
+    deck, libpath = _deck(d, params, lib_text, models, control_text, extra)
+    try:
+        out = _run(d, deck, timeout)
+    finally:
+        if libpath: os.unlink(libpath)
+    return {m.group(1): float(m.group(2)) for m in re.finditer(r"^MEAS (\w+) ([-+\d.eE]+)", out, re.M)}
 
 def curves(circuit_dir, params: dict, timeout=60, lib_text=None, models=None) -> dict:
     """Frequency response and output waveform for plotting (uses curves.control)."""

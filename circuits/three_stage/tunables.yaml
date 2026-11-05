@@ -1,7 +1,7 @@
 # Elements the tuner may change. Names must match .param names in netlist.cir.
 # Ranges in ohms; search is done in log scale.
 tunables:
-  RE2: {min: 1.0e3, max: 30.0e3, init: 8.0e3}
+  RE2: {min: 1.0e3, max: 200.0e3, init: 8.0e3}
   RE3: {min: 100,   max: 10.0e3, init: 10.0e3}
 # Hand-tuned baseline from the 2023 report, for comparison
 baseline:

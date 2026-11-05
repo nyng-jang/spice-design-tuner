@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "tuner")); sys.path.insert(0, str(APP))
 from sim import simulate, curves, model_names
 from optimize import Tuner, check
 from schematic import schematic_svg, fmt
+from capdesign import design as cap_design, tune_with_caps, low_cutoff
 
 CIRCUIT = ROOT / "circuits" / "three_stage"
 _course = ROOT / "models" / "course_project.lib"          # local only, not in the public repo
@@ -38,8 +39,21 @@ def netlist_defaults():
     vals = {}
     for line in re.findall(r"^\.param (.*)$", (CIRCUIT / "netlist.cir").read_text(), re.M):
         for k, v in re.findall(r"(\w+)=(\S+)", line):
-            vals[k] = float(v.lower().replace("meg", "e6").replace("k", "e3"))
+            vals[k] = si(v)
     return vals
+
+def si(v):
+    v = v.strip().lower()
+    for suf, mul in (("meg", 1e6), ("k", 1e3), ("m", 1e-3), ("u", 1e-6), ("n", 1e-9), ("p", 1e-12)):
+        if v.endswith(suf):
+            return float(v[:-len(suf)]) * mul
+    return float(v)
+
+def fmt_c(c):
+    for div, suf in ((1e-3, "mF"), (1e-6, "µF"), (1e-9, "nF"), (1e-12, "pF")):
+        if c >= div * 0.999:
+            return f"{c/div:.3g}{suf}"
+    return f"{c:.3g}F"
 
 @st.cache_data(show_spinner=False, max_entries=500)
 def run_sim(vals: tuple, lib_text: str, models: tuple):
@@ -71,7 +85,7 @@ if "vals" not in ss:
     ss.vals = netlist_defaults()                      # starts at the 2023 hand-tuned answer
     ss.roles = {e: "" for e in ELEMENTS}; ss.roles.update({"RE2": "tune", "RE3": "tune"})
     ss.ranges = {e: (ss.vals[e] / 10, ss.vals[e] * 10) for e in ELEMENTS}
-    ss.ranges.update({"RE2": (1e3, 30e3), "RE3": (100.0, 10e3)})
+    ss.ranges.update({"RE2": (1e3, 200e3), "RE3": (100.0, 10e3)})
     ss.reco = None; ss.last_nonce = None
 
 # apply an edit made by clicking the schematic (arrives as the component's value)
@@ -153,6 +167,14 @@ with right:
         if m["vce2"] < 0.3:
             st.warning("Q2가 포화 상태예요 (VCE2 < 0.3V). 이득과 Rout이 소자값에 매우 민감합니다.")
         cv = run_curves(key(ss.vals), lib_text, MK)
+        fL, gmid_db = low_cutoff(cv)
+        ratio = m["gain"] / 10 ** (gmid_db / 20)
+        if ratio < 0.97:
+            st.warning(f"1kHz가 이득이 평평한 구간(중역) 밖에 있어요. 저역 차단 f_L ≈ {fL:.0f}Hz, "
+                       f"1kHz 이득은 중역({10**(gmid_db/20):.0f}V/V)의 {ratio*100:.0f}%예요. "
+                       f"'커패시터 설계' 탭에서 커패시터 값을 정해보세요.")
+        else:
+            st.caption(f"저역 차단 f_L ≈ {fL:.0f}Hz · 1kHz는 중역 안 (중역 이득 {10**(gmid_db/20):.0f}V/V)")
         t1, t2 = st.tabs(["주파수 응답", "출력 파형 (1kHz, 0.1mV 입력)"])
         with t1:
             fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -184,7 +206,7 @@ with right:
                 st.caption(f"출력이 비대칭이에요 (+{pk:.0f} / {tr:.0f} mV): 파형 왜곡 가능성")
 
 # ---------------- tools ----------------
-tab_rec, tab_sw, tab_tbl = left.tabs(["🎯 추천: 고정값 유지하고 나머지 찾기", "📈 Sweep: 한 소자 바꿔보기", "🧾 소자 표 · 탐색 범위"])
+tab_rec, tab_cap, tab_sw, tab_tbl = left.tabs(["🎯 추천: 고정값 유지하고 나머지 찾기", "🔌 커패시터 설계", "📈 Sweep: 한 소자 바꿔보기", "🧾 소자 표 · 탐색 범위"])
 
 with tab_tbl:
     df = pd.DataFrame([{"소자": e, "값 (Ω)": ss.vals[e],
@@ -213,7 +235,7 @@ with tab_rec:
     restarts = c2.number_input("막혔을 때 재시작 횟수", value=3, min_value=0, max_value=10)
     if st.button("추천 실행", type="primary", disabled=not tune):
         tun = {e: {"min": ss.ranges[e][0], "max": ss.ranges[e][1]} for e in tune}
-        hold = {e: ss.vals[e] for e in ELEMENTS if e not in tune}
+        hold = {k: v for k, v in ss.vals.items() if k not in tune}
         log = []; live = st.empty()
         def on_eval(rec):
             static_schematic({**ss.vals, **{e: rec[e] for e in tune}}, tune)
@@ -253,6 +275,42 @@ with tab_rec:
             ss.vals.update(r["values"]); ss.pop("table", None); st.rerun()
         if c2.button("E96 표준값 적용", use_container_width=True):
             ss.vals.update({e: e96(v) for e, v in r["values"].items()}); ss.pop("table", None); st.rerun()
+
+with tab_cap:
+    st.markdown("각 커패시터가 바라보는 등가 저항 **Req**를 ngspice로 측정하고 **C = 1 / (2π · Req · f_c)** 로 값을 정해요. "
+                "Req가 가장 큰 커패시터 하나가 저역 차단을 주도하고(주극점), 나머지는 그보다 한 decade 아래에 둬요.")
+    c1, c2, c3 = st.columns(3)
+    fmin = c1.number_input("신호 최저 주파수 f_min (Hz)", value=1000.0, format="%g")
+    margin = c2.number_input("주극점 f_c = f_min ÷", value=10.0, min_value=1.0)
+    spread = c3.number_input("나머지 f_c = 주극점 ÷", value=10.0, min_value=1.0)
+    b1, b2, _ = st.columns([1.2, 1.6, 2])
+    if b1.button("Req 측정 + 설계", type="primary", use_container_width=True):
+        with st.spinner("Req 측정 중..."):
+            ss.capd = cap_design(CIRCUIT, ss.vals, f_min=fmin, margin=margin, spread=spread, sim_kwargs=sim_kwargs)
+    tune_now = [e for e in ELEMENTS if ss.roles[e] == "tune"]
+    if b2.button("설계 + 저항 재튜닝 반복", use_container_width=True, disabled=not tune_now,
+                 help="커패시터를 정하면 이득이 바뀌어서, 저항을 다시 맞추고 커패시터를 다시 정하는 걸 값이 안 바뀔 때까지 반복해요"):
+        with st.spinner("커패시터 설계와 저항 튜닝을 번갈아 하는 중..."):
+            tun = {e: {"min": ss.ranges[e][0], "max": ss.ranges[e][1]} for e in tune_now}
+            hold = {k: v for k, v in ss.vals.items() if k not in tune_now and not re.fullmatch(r"C\d+", k)}
+            r = tune_with_caps(CIRCUIT, {e: ss.vals[e] for e in tune_now}, tunables=tun, fixed=hold, spec=spec,
+                               f_min=fmin, sim_kwargs=sim_kwargs)
+            ss.vals.update(r["res"]); ss.vals.update(r["caps"]); ss.capd = r["design"]; ss.pop("table", None)
+            okr = all(check(simulate(CIRCUIT, ss.vals, **sim_kwargs), spec).values())
+            ss.capd_note = (f"{len(r['log'])}번 반복 · 저항 " + ", ".join(f"{k}={fmt(v)}Ω" for k, v in r["res"].items())
+                            + (" · 모든 사양 만족" if okr else " · 사양 미달: 소자 표에서 조정 범위를 넓혀보세요"))
+        st.rerun()
+    if "capd" in ss:
+        d = ss.capd
+        if ss.get("capd_note"): (st.success if "만족" in ss.capd_note else st.warning)(ss.capd_note + " (적용됨)")
+        rows = [{"커패시터": r["cap"] + (" ★주극점" if r["dominant"] else ""), "Req (Ω)": fmt(r["req"]),
+                 "목표 f_c (Hz)": f"{r['fc']:.3g}", "계산값": fmt_c(r["c_calc"]), "표준값 (E6, 올림)": fmt_c(r["c_std"]),
+                 "현재": fmt_c(ss.vals.get(r["cap"], 0))} for r in d["rows"]]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.caption(f"설계값 적용 시: 저역 차단 f_L ≈ {d['f_L']:.0f}Hz (목표 {d['f_dom_target']:.0f}Hz 이하), "
+                   f"중역 이득 {10**(d['mid_gain_db']/20):.0f}V/V, {fmin:g}Hz 이득 {10**(d['gain_db_at_fmin']/20):.0f}V/V")
+        if st.button("설계한 커패시터 값 적용"):
+            ss.vals.update(d["caps"]); st.rerun()
 
 with tab_sw:
     c1, c2, c3, c4 = st.columns(4)
