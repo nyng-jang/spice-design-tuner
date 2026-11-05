@@ -1,0 +1,37 @@
+* Measurement block for the 3-stage amp. Prints "MEAS <name> <value>" lines.
+.control
+op
+let vce2 = v(c2)-v(e2)
+let vce3 = v(vcc)-v(e3)
+let vds1 = v(d1)-v(s1)
+echo "MEAS vce2 $&vce2"
+echo "MEAS vce3 $&vce3"
+echo "MEAS vds1 $&vds1"
+let ic2 = @q2[ic]
+let ic3 = @q3[ic]
+let id1 = @m1[id]
+echo "MEAS ic2 $&ic2"
+echo "MEAS ic3 $&ic3"
+echo "MEAS id1 $&id1"
+ac lin 1 1k 1k
+let gain = mag(v(out))/mag(v(vs))
+let av1 = mag(v(d1))/mag(v(g1))
+let av2 = mag(v(c2))/mag(v(d1))
+let av3 = mag(v(out))/mag(v(c2))
+echo "MEAS gain $&gain"
+echo "MEAS av1 $&av1"
+echo "MEAS av2 $&av2"
+echo "MEAS av3 $&av3"
+* Rin at 100 Hz: at 1 kHz the 2N7000 gate capacitances (Miller) already move Rin to ~1.04-1.06 MOhm
+ac lin 1 100 100
+let rsig = @rsig[r]
+let zin = v(in)/((v(vs)-v(in))/rsig)
+let rin = real(zin)
+echo "MEAS rin $&rin"
+alter vi acmag=0
+alter itest acmag=1
+alter rl r=1e12
+ac lin 1 1k 1k
+let rout = mag(v(e3))
+echo "MEAS rout $&rout"
+.endc

@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+runs/
+models/course_project.lib
+*.tmp

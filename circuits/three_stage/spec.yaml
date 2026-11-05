@@ -1,0 +1,9 @@
+# Target specs (2023 design project). tol = allowed relative error.
+targets:
+  gain: {value: 1000, tol: 0.01}    # V/V, source to load (RSIG=10k, RL=250)
+  rin:  {value: 1.0e6, tol: 0.05}   # ohm
+  rout: {value: 60,   tol: 0.05}    # ohm
+# Operating-point constraints (keep BJTs out of saturation)
+constraints:
+  vce2: {min: 1.0}   # V
+  vce3: {min: 1.0}   # V

@@ -1,0 +1,4 @@
+* Generic models matching the design-project spec: beta_F = 100, VBE ~ 0.7 V, no Early effect.
+* (The course PSpice library is not redistributed; upload it in the app if you have it.)
+.MODEL Q2 NPN(IS=1.8f BF=100)
+.MODEL Q3 NPN(IS=1.8f BF=100)

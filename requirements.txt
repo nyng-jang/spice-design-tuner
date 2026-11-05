@@ -1,0 +1,7 @@
+numpy
+scipy
+pyyaml
+pandas
+matplotlib
+streamlit
+anthropic
